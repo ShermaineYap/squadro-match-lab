@@ -1,0 +1,110 @@
+MIT License
+
+Copyright (c) 2026 Shermaine Yap Shi Min (TP070453)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
+SCOPE OF THIS LICENCE — PLEASE READ
+================================================================================
+
+This MIT licence covers the ORIGINAL SOURCE CODE of this project only: the
+contents of src/, api/, scripts/, tests/, notebooks/, dashboard/ (excluding
+third-party packages restored by npm) and the project's own documentation.
+
+It does NOT cover the datasets, the pre-trained pose model, or any third-party
+dependency. Those carry their own separate terms, set out below. Do not assume
+the code licence extends to the data.
+
+--------------------------------------------------------------------------------
+1. Multimodal Sports Injury Dataset  —  CC BY-NC-SA 4.0
+--------------------------------------------------------------------------------
+File:      data/raw/multimodal_sports_injury_dataset.csv
+Source:    https://www.kaggle.com/datasets/anjalibhegam/multimodal-sports-injury-dataset
+Owner:     anjalibhegam (Kaggle)
+Accessed:  6 August 2026
+Licence:   Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+           https://creativecommons.org/licenses/by-nc-sa/4.0/
+
+This licence is NOT compatible with the MIT terms above and is more
+restrictive. It imposes three conditions on this dataset and on anything
+derived from it:
+
+  BY (Attribution)   — credit the original Kaggle dataset owner.
+  NC (NonCommercial) — no commercial use of the dataset or its derivatives.
+  SA (ShareAlike)    — adapted versions of the dataset must be redistributed
+                       under CC BY-NC-SA 4.0, not MIT.
+
+Practical consequences for anyone reusing this repository:
+
+  - The derived files under outputs/injury/ (cleaned, split and engineered
+    versions of this dataset) are adaptations and remain CC BY-NC-SA 4.0.
+  - The trained injury model bundles in models/ and models/baseline/ are derived
+    from this data. Treat them as non-commercial-use artefacts.
+  - The BWF stream is unaffected by these terms.
+
+--------------------------------------------------------------------------------
+2. BWF match records  —  researcher-collected, no redistribution licence granted
+--------------------------------------------------------------------------------
+File:            data/raw/bwf_matches_2021_2025.csv
+Collection code: https://github.com/ShermaineYap/BWFWebScrap
+Source:          publicly accessible BWF web endpoints
+                 (https://extranet-lv.bwfbadminton.com/api)
+Coverage:        2021-2025 (26,341 raw match records)
+
+These records were collected by the author from publicly accessible BWF pages
+for academic research. The underlying facts originate with the Badminton World
+Federation, which has not granted any redistribution licence to this project.
+The author claims no ownership of the underlying match facts and grants no
+licence over them. The COLLECTION CODE is separately licensed at the repository
+above; this file records only the provenance of the data.
+
+The BWF tournament calendar (artifacts/bwf_tournament_calendar.json) and the
+run-time draw cache come from the same source under the same terms. Neither is
+used for training, evaluation or any reported result.
+
+--------------------------------------------------------------------------------
+3. MediaPipe Pose Landmarker  —  Apache License 2.0
+--------------------------------------------------------------------------------
+File:    models/mediapipe/pose_landmarker_lite.task
+Source:  Google MediaPipe (https://developers.google.com/mediapipe)
+Licence: Apache License 2.0
+         https://www.apache.org/licenses/LICENSE-2.0
+
+Downloaded at setup time by scripts/setup_movement_model.py. Redistributed
+under Apache 2.0, not MIT.
+
+--------------------------------------------------------------------------------
+4. Movement footage  —  NOT LICENSED, NOT CLEARED FOR REDISTRIBUTION
+--------------------------------------------------------------------------------
+Any badminton video recorded for the movement-screening module, and any frame,
+screenshot or annotated output derived from it, is EXCLUDED from this licence
+and from redistribution entirely.
+
+As recorded in docs/MOVEMENT_FOOTAGE_PROVENANCE.md, consent, research-use
+permission and ethics clearance for this footage are NOT yet confirmed. Until
+that document is completed and approved, the footage must not be redistributed,
+published or included in any submission package.
+
+--------------------------------------------------------------------------------
+5. Third-party software dependencies
+--------------------------------------------------------------------------------
+Python packages (see requirements*.txt) and JavaScript packages (see
+dashboard/package.json) retain their own upstream licences. They are declared
+as dependencies and are not redistributed in the source package.

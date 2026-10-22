@@ -1,0 +1,6 @@
+# Only needed to rebuild data/*.json. The web app itself has no build step.
+pandas==2.2.3
+numpy==2.2.6
+scikit-learn==1.8.0
+joblib==1.5.3
+scipy==1.17.0

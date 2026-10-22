@@ -1,0 +1,1 @@
+{"coef":{"margin":0.74776156760641,"g1":0.9199230185716453,"g1_margin":1.7557367242917865},"fit_on":"2025 out-of-sample matches","n_fit":7030,"test_2026":{"n":3822,"auc_prematch":0.7977,"auc_after_game1":0.9009,"logloss_prematch":0.5481,"logloss_after_game1":0.3971,"brier_after_game1":0.1244}}

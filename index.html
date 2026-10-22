@@ -1,0 +1,914 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Squadro Match Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Pre-match win probabilities, draw odds and scouting for BWF World Tour badminton, from an audited, order-symmetric Glicko-2 model.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,800;1,900&display=swap">
+<style>
+/* Layout: telop field. A studio-dark ground, one sticky caption bar of views, chamfered
+   panels with a single saturated keyline each, verdicts set as stroked italic captions. */
+:root {
+  color-scheme: dark;
+  --bg: #0b0b11; --bg-2: #08080d; --surface: #15151f; --surface-2: #1b1b27; --surface-3: #232333;
+  --line: #2e2e40; --line-soft: #21212f; --outline: #000;
+  --ink: #f7f5ef; --ink-2: #bfbccf; --muted: #8f8ca0;
+  --yellow: #ffd83d; --pink: #ff2e63; --blue: #3d7bff; --green: #35d06a; --purple: #9b5de5; --grey: #8a8f9a;
+  --side-a: #3d7bff; --side-b: #ff2e63;
+  --display: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --body: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --chamfer: 11px; --t: 170ms; --snap: cubic-bezier(.16, 1, .3, 1);
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5;
+  background-image: radial-gradient(rgba(255,255,255,.075) 1px, transparent 1.2px); background-size: 6px 6px;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg-2); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+a { color: var(--yellow); }
+:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+
+/* header */
+header.top { background: var(--bg-2); border-bottom: 2px solid var(--outline); position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; }
+header.top .wrap { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding-block: 10px; }
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); }
+.brand .mark { width: 30px; height: 30px; background: var(--yellow); clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); position: relative; }
+.brand .mark::after { content: ""; position: absolute; inset: 9px; background: var(--bg-2); clip-path: inherit; }
+.brand b { font: 900 italic 19px/1 var(--display); letter-spacing: -.03em; }
+.brand span { font: 600 11px/1 var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+nav.tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+nav.tabs a { text-decoration: none; color: var(--ink-2); font: 800 13px/1 var(--body); letter-spacing: .06em; text-transform: uppercase; padding: 9px 12px; border: 2px solid transparent; clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+nav.tabs a:hover { color: var(--ink); background: var(--surface); }
+nav.tabs a[aria-current="page"] { color: #000; background: var(--yellow); }
+
+main { padding-block: 22px 60px; }
+.view[hidden] { display: none !important; }
+.intro { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 20px; align-items: end; margin-bottom: 18px; }
+.eyebrow { font: 800 11px/1 var(--body); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.cap { font: 900 italic clamp(30px, 5vw, 50px)/1.06 var(--display); letter-spacing: -.04em; color: var(--ink); -webkit-text-stroke: 0; margin-top: 6px; }
+.cap em { font-style: italic; color: var(--yellow); }
+.lede { color: var(--ink-2); max-width: 66ch; margin: 8px 0 0; }
+.stamp { font: 700 12px/1.35 var(--mono); color: var(--muted); text-align: right; border: 1px dashed var(--line); padding: 8px 10px; }
+.stamp b { color: var(--ink); font-weight: 700; }
+
+/* panels */
+.panel { background: var(--surface); border: 2px solid var(--blue); outline: 2px solid var(--outline); clip-path: polygon(var(--chamfer) 0, 100% 0, 100% calc(100% - var(--chamfer)), calc(100% - var(--chamfer)) 100%, 0 100%, 0 var(--chamfer)); padding: 18px; min-width: 0; box-shadow: 6px 6px 0 #000; }
+.panel.y { border-color: var(--yellow); }
+.panel.p { border-color: var(--purple); }
+.panel.g { border-color: var(--green); }
+.panel.k { border-color: var(--pink); }
+.panel h2 { font: 900 italic 22px/1.1 var(--display); letter-spacing: -.03em; }
+.panel h3 { font: 800 13px/1.2 var(--body); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); }
+.panel .sub { color: var(--muted); font-size: 13px; margin: 4px 0 0; }
+.explain p:first-child { margin-top: 0; }
+.rule { border-top: 1px solid var(--line); margin: 16px -18px; }
+.grid { display: grid; gap: 18px; align-content: start; }
+.g-main, .g2, .g3 { align-items: start; }
+.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.g-main { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+@media (max-width: 900px) { .g2, .g3, .g-main { grid-template-columns: minmax(0, 1fr); } .intro { grid-template-columns: minmax(0, 1fr); } .stamp { text-align: left; } }
+
+/* controls */
+.seg { display: inline-flex; flex-wrap: wrap; gap: 0; border: 2px solid var(--outline); background: var(--bg-2); }
+.seg button { font: 800 13px/1 var(--body); letter-spacing: .06em; color: var(--ink-2); background: none; border: 0; padding: 10px 13px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--yellow); color: #000; }
+.seg button:hover:not([aria-pressed="true"]) { color: var(--ink); background: var(--surface-2); }
+.btn { font: 800 13px/1 var(--body); letter-spacing: .05em; text-transform: uppercase; color: #000; background: var(--yellow); border: 2px solid #000; padding: 10px 14px; cursor: pointer; box-shadow: 4px 4px 0 #000; clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px); transition: transform var(--t), box-shadow var(--t); }
+.btn:active { transform: translate(4px, 4px); box-shadow: 0 0 0 #000; }
+.btn.ghost { background: var(--surface-3); color: var(--ink); }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+label.lbl { display: block; font: 800 11px/1 var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+input[type="text"], input[type="number"], select { font: 600 15px/1.2 var(--body); color: var(--ink); background: var(--bg-2); border: 2px solid var(--line); border-radius: 3px; padding: 10px 11px; width: 100%; }
+input[type="number"] { width: 72px; text-align: center; }
+input:focus, select:focus { border-color: var(--yellow); outline: none; }
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--ink-2); cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--yellow); margin-top: 2px; flex: none; }
+
+/* picker */
+.picker { position: relative; }
+.picker .list { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 4; background: var(--surface-2); border: 2px solid var(--yellow); max-height: 300px; overflow: auto; box-shadow: 6px 6px 0 #000; }
+.picker .opt { display: flex; justify-content: space-between; gap: 12px; padding: 9px 11px; cursor: pointer; border-bottom: 1px solid var(--line-soft); }
+.picker .opt:hover, .picker .opt[aria-selected="true"] { background: var(--surface-3); }
+.picker .opt small { color: var(--muted); font-family: var(--mono); white-space: nowrap; }
+.side-tag { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; }
+
+/* verdict */
+.verdict { display: grid; grid-template-columns: minmax(0, 1fr) 128px; gap: 12px; align-items: center; }
+.verdict .call { font: 900 italic clamp(28px, 4.6vw, 46px)/1.06 var(--display); letter-spacing: -.04em; color: var(--yellow); -webkit-text-stroke: .085em #fff; paint-order: stroke fill; text-shadow: 4px 4px 0 #000; }
+.verdict .who { font: 800 17px/1.3 var(--body); margin-top: 6px; }
+.burst { width: 128px; height: 128px; }
+@media (prefers-reduced-motion: no-preference) {
+  .land { animation: telop-land 420ms var(--snap); }
+  .burst.land { animation: burst-in 520ms var(--snap); }
+}
+@keyframes telop-land { from { transform: translateX(-18px) skewX(-8deg); opacity: .2; } to { transform: none; opacity: 1; } }
+@keyframes burst-in { from { transform: scale(.4) rotate(-30deg); } to { transform: none; } }
+.pbar { display: flex; height: 38px; border: 2px solid #000; margin-top: 16px; font: 900 15px/38px var(--body); }
+.pbar div { overflow: hidden; white-space: nowrap; padding: 0 10px; color: #fff; transition: flex-basis 400ms var(--snap); }
+.pbar .a { background: var(--side-a); text-align: left; }
+.pbar .b { background: var(--side-b); text-align: right; }
+.sidecard { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 10px; margin-top: 14px; }
+.sidecard > div { background: var(--surface-2); padding: 10px 12px; border-top: 4px solid var(--side-a); min-width: 0; }
+.sidecard > div.b { border-top-color: var(--side-b); }
+.kv { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.kv b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.form { display: flex; gap: 3px; margin-top: 6px; flex-wrap: wrap; }
+.form i { width: 18px; height: 18px; font: 800 10px/18px var(--body); font-style: normal; text-align: center; color: #000; }
+.form i.w { background: var(--green); } .form i.l { background: var(--grey); }
+
+/* factor bars */
+.factors { display: grid; gap: 8px; margin-top: 10px; }
+.factor { display: grid; grid-template-columns: 130px minmax(0, 1fr) 64px; gap: 10px; align-items: center; font-size: 13px; }
+.factor .name { color: var(--ink-2); font-weight: 700; }
+.factor .track { position: relative; height: 18px; background: var(--bg-2); border: 1px solid var(--line); }
+.factor .track::before { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; background: var(--muted); }
+.factor .fill { position: absolute; top: 2px; bottom: 2px; }
+.factor .val { font-family: var(--mono); font-size: 12px; text-align: right; color: var(--ink-2); }
+.explain { font-size: 14px; color: var(--ink-2); margin: 12px 0 0; }
+.explain li { margin-bottom: 4px; }
+.note { font-size: 12.5px; color: var(--muted); border-left: 3px solid var(--line); padding-left: 10px; margin: 12px 0 0; }
+
+/* tables */
+.tbl-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th { text-align: left; font: 800 11px/1.2 var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 8px 8px; border-bottom: 2px solid var(--line); }
+td { padding: 8px 8px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
+tr.hl td { background: rgba(255,216,61,.07); }
+.chip { display: inline-block; font: 800 11px/1 var(--body); letter-spacing: .08em; padding: 4px 6px; background: var(--surface-3); color: var(--ink-2); }
+.chip.y { background: var(--yellow); color: #000; } .chip.g { background: var(--green); color: #000; } .chip.k { background: var(--pink); color: #fff; }
+.oddsbar { height: 10px; background: var(--bg-2); border: 1px solid var(--line); min-width: 80px; }
+.oddsbar div { height: 100%; background: var(--yellow); }
+
+/* bracket */
+.bracket { display: grid; gap: 8px; overflow-x: auto; padding-bottom: 6px; }
+.round { display: grid; gap: 6px; align-content: space-around; min-width: 170px; }
+.slot { background: var(--surface-2); border-left: 4px solid var(--line); padding: 5px 8px; font-size: 12.5px; display: flex; justify-content: space-between; gap: 8px; }
+.slot b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slot span { font-family: var(--mono); color: var(--ink-2); }
+
+/* findings */
+.finding .big { font: 900 italic 44px/1 var(--display); letter-spacing: -.04em; color: var(--yellow); margin: 10px 0 2px; }
+.finding .big.k { color: var(--pink); } .finding .big.g { color: var(--green); } .finding .big.b { color: var(--blue); }
+.finding p { margin: 8px 0 0; color: var(--ink-2); font-size: 14px; }
+.finding .act { margin-top: 10px; font-size: 13.5px; background: var(--surface-2); padding: 9px 11px; }
+.finding .act b { color: var(--yellow); letter-spacing: .08em; font-size: 11px; text-transform: uppercase; display: block; margin-bottom: 3px; }
+svg text { fill: var(--ink-2); font-family: var(--body); font-size: 11px; }
+svg .axis { stroke: var(--line); }
+footer { border-top: 2px solid #000; background: var(--bg-2); color: var(--muted); font-size: 13px; }
+footer .wrap { padding-block: 22px; display: grid; gap: 8px; }
+.loading { padding: 60px 0; text-align: center; color: var(--muted); font: 800 italic 20px var(--display); }
+.err { color: var(--pink); }
+@media (max-width: 560px) { header.top { position: static; } .factor { grid-template-columns: 92px minmax(0, 1fr) 54px; } .verdict { grid-template-columns: minmax(0,1fr) 86px; } .burst { width: 86px; height: 86px; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#predict" aria-label="Squadro Match Lab home"><div class="mark" aria-hidden="true"></div><div><b>SQUADRO</b><br><span>Match Lab</span></div></a>
+    <nav class="tabs" aria-label="Views">
+      <a href="#predict" data-view="predict">Predict</a>
+      <a href="#simulate" data-view="simulate">Draw odds</a>
+      <a href="#scout" data-view="scout">Scout</a>
+      <a href="#insights" data-view="insights">Insights</a>
+      <a href="#evidence" data-view="evidence">Evidence</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap" id="app">
+  <div class="loading" id="loading">Loading 29,792 matches of ratings…</div>
+
+  <!-- ============================== PREDICT ============================== -->
+  <section class="view" id="view-predict" hidden>
+    <div class="intro">
+      <div>
+        <div class="eyebrow">Pre-match forecast</div>
+        <h1 class="cap">Who wins <em>this</em> match, and why?</h1>
+        <p class="lede">Pick any two players or pairs from the BWF World Tour. The audited FYP champion model gives the win probability, breaks it into the factors behind it, and updates it once game 1 is in.</p>
+      </div>
+      <div class="stamp" id="stamp"></div>
+    </div>
+    <div class="grid g-main">
+      <div class="grid">
+        <div class="panel">
+          <div class="row" style="justify-content:space-between">
+            <h3>Fixture</h3>
+            <div class="seg" id="disc-predict" role="group" aria-label="Discipline"></div>
+          </div>
+          <div class="grid g2" style="margin-top:14px">
+            <div><label class="lbl" for="pick-a-input"><span class="side-tag" style="background:var(--side-a)"></span>Side A</label><div class="picker" id="pick-a"></div></div>
+            <div><label class="lbl" for="pick-b-input"><span class="side-tag" style="background:var(--side-b)"></span>Side B</label><div class="picker" id="pick-b"></div></div>
+          </div>
+          <div class="row" style="margin-top:12px"><button class="btn ghost" id="swap" type="button">Swap sides</button><button class="btn ghost" id="random-fixture" type="button">Random top-20 fixture</button></div>
+        </div>
+        <div class="panel y" id="result"></div>
+      </div>
+      <div class="grid">
+        <div class="panel p">
+          <h2>Why the model leans this way</h2>
+          <p class="sub">Each bar is a factor's exact share of the prediction, in log-odds. Bars to the left favour side A, bars to the right favour side B.</p>
+          <div class="factors" id="factors"></div>
+          <ul class="explain" id="explain"></ul>
+        </div>
+        <div class="panel g">
+          <h2>Live: after game 1</h2>
+          <p class="sub">Enter the game 1 score. A small model fitted on 2025 and tested on all 3,822 matches of 2026 updates the forecast.</p>
+          <div class="row" style="margin-top:12px">
+            <div><label class="lbl" for="g1a">Side A</label><input type="number" id="g1a" min="0" max="30" placeholder="21"></div>
+            <div style="font:900 22px var(--display);padding-top:18px">–</div>
+            <div><label class="lbl" for="g1b">Side B</label><input type="number" id="g1b" min="0" max="30" placeholder="17"></div>
+            <div style="padding-top:18px"><button class="btn" id="g1go" type="button">Update</button></div>
+          </div>
+          <div id="live-out" style="margin-top:12px"></div>
+        </div>
+        <div class="panel k">
+          <h2>Match context</h2>
+          <p class="sub">Two effects the model cannot see, measured on 10,852 out-of-sample matches. Tick one to apply its adjustment.</p>
+          <div class="grid" style="margin-top:12px;gap:10px">
+            <label class="check"><input type="checkbox" id="ctx-home-a"> Side A is playing at home (a player is from the host nation)</label>
+            <label class="check"><input type="checkbox" id="ctx-home-b"> Side B is playing at home</label>
+            <label class="check"><input type="checkbox" id="ctx-fat-a"> Side A went to three games in its previous round, side B did not</label>
+            <label class="check"><input type="checkbox" id="ctx-fat-b"> Side B went to three games in its previous round, side A did not</label>
+          </div>
+          <p class="note" id="ctx-note"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== SIMULATE ============================== -->
+  <section class="view" id="view-simulate" hidden>
+    <div class="intro">
+      <div>
+        <div class="eyebrow">Draw odds</div>
+        <h1 class="cap">How much does the <em>draw</em> decide?</h1>
+        <p class="lede">A 16-entry knockout, computed exactly from every pairwise win probability rather than by random sampling. Start from a seeded draw of the current top 16, then shuffle it to see how much one draw moves each player's title odds.</p>
+      </div>
+    </div>
+    <div class="grid g-main">
+      <div class="panel y">
+        <div class="row" style="justify-content:space-between">
+          <h3>Title odds</h3>
+          <div class="seg" id="disc-sim" role="group" aria-label="Discipline"></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn" id="seeded" type="button">Seeded draw</button>
+          <button class="btn ghost" id="shuffle" type="button">Shuffle the draw</button>
+        </div>
+        <p class="note" id="draw-note"></p>
+        <div class="tbl-wrap" style="margin-top:10px"><table id="odds"></table></div>
+      </div>
+      <div class="grid">
+        <div class="panel p">
+          <h2>Draw luck</h2>
+          <p class="sub">Spread of each top-8 entrant's title odds across 300 random draws. A wide bar means the draw matters more than form.</p>
+          <div id="luck" style="margin-top:10px"></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:18px">
+      <h2>Bracket</h2>
+      <p class="sub">The most likely occupant of each slot, and their chance of getting there.</p>
+      <div class="bracket" id="bracket" style="margin-top:12px"></div>
+    </div>
+  </section>
+
+  <!-- ============================== SCOUT ============================== -->
+  <section class="view" id="view-scout" hidden>
+    <div class="intro">
+      <div>
+        <div class="eyebrow">Scouting profile</div>
+        <h1 class="cap">Rating, form and <em>who beats the model</em></h1>
+        <p class="lede">Every player's Glicko-2 rating history from 2021, current form, and 2026 wins above expectation: actual wins minus the wins the model expected before each match.</p>
+      </div>
+    </div>
+    <div class="grid g-main">
+      <div class="grid">
+        <div class="panel">
+          <div class="row" style="justify-content:space-between"><h3>Player</h3><div class="seg" id="disc-scout" role="group" aria-label="Discipline"></div></div>
+          <div class="picker" id="pick-scout" style="margin-top:12px"></div>
+        </div>
+        <div class="panel y" id="scout-card"></div>
+      </div>
+      <div class="grid">
+        <div class="panel p"><h2>Power rankings</h2><p class="sub">Active players (15+ matches, played since May 2026) ranked by Glicko-2 rating. The ± column is the rating deviation: smaller means the model is surer.</p><div class="tbl-wrap" style="margin-top:10px"><table id="rankings"></table></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== INSIGHTS ============================== -->
+  <section class="view" id="view-insights" hidden>
+    <div class="intro">
+      <div>
+        <div class="eyebrow">What 10,852 unseen matches say</div>
+        <h1 class="cap">Six findings a coach can <em>use</em></h1>
+        <p class="lede">Every number below comes from out-of-sample predictions: the 2025 and 2026 seasons, which the model never trained on. Intervals are 95% bootstrap intervals that resample whole tournaments.</p>
+      </div>
+    </div>
+    <div class="grid g3" id="findings"></div>
+    <div class="grid g2" style="margin-top:18px">
+      <div class="panel k"><h2>Biggest upsets of 2026</h2><p class="sub">Winners the model gave the lowest chance before the match.</p><div class="tbl-wrap" style="margin-top:10px"><table id="upsets"></table></div></div>
+      <div class="panel g"><div class="row" style="justify-content:space-between"><h2>Beating the model in 2026</h2><div class="seg" id="disc-out" role="group" aria-label="Discipline"></div></div><p class="sub">Wins above expectation, minimum 12 matches. Sustained over-performance is a sign the rating has not caught up yet: a player on the rise.</p><div class="tbl-wrap" style="margin-top:10px"><table id="outperf"></table></div></div>
+    </div>
+  </section>
+
+  <!-- ============================== EVIDENCE ============================== -->
+  <section class="view" id="view-evidence" hidden>
+    <div class="intro">
+      <div>
+        <div class="eyebrow">Model evidence</div>
+        <h1 class="cap">Can you <em>trust</em> these numbers?</h1>
+        <p class="lede">The model was frozen before it saw 2025 or 2026. This page shows how it performed on both seasons, where it is weaker, and a live check that this browser reproduces the served model exactly.</p>
+      </div>
+    </div>
+    <div class="grid g2">
+      <div class="panel y"><h2>Audit on unseen seasons</h2><div class="tbl-wrap" style="margin-top:10px"><table id="audit"></table></div><p class="note">ROC-AUC: the chance the model ranks a random winner above a random loser. 0.5 is a coin flip, 1.0 is perfect. Interval: tournament-cluster bootstrap from the FYP audit.</p></div>
+      <div class="panel"><h2>Calibration</h2><p class="sub">When the model says 70%, does that side win about 70% of the time? Points on the diagonal mean yes.</p><div id="calib" style="margin-top:8px"></div></div>
+      <div class="panel p"><h2>Where it is strong and weak</h2><p class="sub">ROC-AUC by discipline, both audit seasons pooled.</p><div id="disc-auc" style="margin-top:8px"></div></div>
+      <div class="panel g"><h2>Live reproduction check</h2><div id="parity"></div></div>
+    </div>
+    <div class="panel k" style="margin-top:18px">
+      <h2>How it works, and its limits</h2>
+      <div class="grid g2" style="margin-top:10px">
+        <div class="explain">
+          <p><b>Model.</b> Logistic regression on 20 pre-match features: Elo and Glicko-2 rating gaps, recent form over 5 and 10 matches, experience, career record, rest days and head-to-head. Trained on 17,193 matches from 2022–2024.</p>
+          <p><b>Order symmetry.</b> The model scores each fixture both ways round and averages in log-odds, so P(A beats B) = 1 − P(B beats A) exactly. Context that is the same for both sides (tournament tier, round) cancels out, which is why the model is a short weighted sum that this page can explain factor by factor.</p>
+          <p><b>No leakage.</b> Every match on a given date is rated only from matches before that date.</p>
+        </div>
+        <ul class="explain">
+          <li>Ratings are frozen at <b>9 August 2026</b>, the end of the scraped data. Results after that date are not reflected.</li>
+          <li>Men's singles is the hardest discipline to call (ROC-AUC about 0.73). Women's doubles is the easiest (about 0.86).</li>
+          <li>The 0.80 ROC-AUC target was met in 2025 (0.808) but not in 2026 (0.798). Both intervals contain 0.80.</li>
+          <li>Probabilities are uncalibrated, and 2026 calibration is weaker than 2025 (ECE 0.038 against 0.014).</li>
+          <li>The home and fatigue adjustments are measured effects. The combined adjustment did not clearly beat a simple recalibration on 2026, so treat them as context.</li>
+          <li>A doubles pair the data has never seen together starts from a default partnership rating.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>Squadro Match Lab · AQX Sports Analytics Data Bowl 4.0 entry by Shermaine Yap Shi Min, built on her BSc final-year project at Asia Pacific University (APU), Malaysia.</div>
+    <div>Data: BWF World Tour match results 2021 to 9 Aug 2026 (29,792 matches), collected with the author's open-source BWFWebScrap scraper. Not affiliated with the Badminton World Federation.</div>
+  </div>
+</footer>
+
+<script>
+"use strict";
+const D = {};
+const DISCS = ["MS", "WS", "MD", "WD", "XD"];
+const DNAME = { MS: "Men's singles", WS: "Women's singles", MD: "Men's doubles", WD: "Women's doubles", XD: "Mixed doubles" };
+const DOUBLES = new Set(["MD", "WD", "XD"]);
+const DAY = 86400000;
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const pct = (p, d = 0) => (100 * p).toFixed(d) + "%";
+const sig = z => 1 / (1 + Math.exp(-z));
+const sgn = (v, d = 1) => { const x = +v.toFixed(d); return (x > 0 ? "+" : x < 0 ? "−" : "±") + Math.abs(x).toFixed(d); };
+const fold = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+// ------------------------------------------------------------------ model
+function rec(disc, id) {
+  return D.players.players[disc][id] || { n: "Unknown " + id, c: "", elo: 1500, gr: 1500, gd: 350, gv: 0.06, f5: null, f10: null, m: 0, w: 0, cwr: null, last: null, h: "" };
+}
+const PAIR = {};
+function pairRec(disc, ids) { return (PAIR[disc] || {})[ids.join("-")] || null; }
+const mean = a => a.reduce((s, x) => s + x, 0) / a.length;
+const meanNN = a => { const v = a.filter(x => x !== null && x !== undefined); return v.length ? mean(v) : null; };
+const sd = (a, b) => (a === null || b === null) ? null : a - b;
+
+function teamStats(disc, ids) {
+  const rs = ids.map(id => rec(disc, id));
+  const lasts = rs.map(r => r.last ? Date.parse(r.last) : null).filter(x => x !== null);
+  const t = {
+    ids, rs,
+    elo: mean(rs.map(r => r.elo ?? 1500)),
+    f5: meanNN(rs.map(r => r.f5)), f10: meanNN(rs.map(r => r.f10)),
+    exp: mean(rs.map(r => r.m)), cwr: meanNN(rs.map(r => r.cwr)),
+    lastMean: lasts.length ? mean(lasts) : null, lastMax: lasts.length ? Math.max(...lasts) : null,
+    cold: rs.some(r => r.m < 5) ? 1 : 0,
+    gr: mean(rs.map(r => r.gr)), gd: mean(rs.map(r => r.gd)), gv: mean(rs.map(r => r.gv)),
+  };
+  if (DOUBLES.has(disc)) {
+    const p = pairRec(disc, ids);
+    t.pelo = p ? p.elo : 1500; t.pf5 = p ? p.f5 : null; t.pm = p ? p.m : 0; t.ph = p ? p.h : ""; t.known = !!p;
+  }
+  return t;
+}
+function h2hKey(disc, a, b) {
+  const cmp = (x, y) => { for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return x[i] - y[i]; return x.length - y.length; };
+  const [p, q] = cmp(a, b) <= 0 ? [a, b] : [b, a];
+  return { key: disc + "|" + p.join("-") + "|" + q.join("-"), first: p };
+}
+function h2h(disc, a, b) {
+  const { key, first } = h2hKey(disc, a, b);
+  const v = D.h2h[key];
+  if (!v) return { n: 0, a: 0, b: 0 };
+  const aFirst = first === a;
+  return { n: v[0], a: aFirst ? v[1] : v[2], b: aFirst ? v[2] : v[1] };
+}
+function features(disc, t1, t2) {
+  const dbl = DOUBLES.has(disc);
+  const S = D.model.glicko_scale;
+  const phi = Math.sqrt((t1.gd / S) ** 2 + (t2.gd / S) ** 2);
+  const certainty = 1 / Math.sqrt(1 + 3 * phi * phi / (Math.PI ** 2));
+  const hh = h2h(disc, t1.ids, t2.ids);
+  return {
+    individual_elo_diff: t1.elo - t2.elo,
+    partnership_elo_diff: dbl ? t1.pelo - t2.pelo : 0,
+    recent_form_5_diff: sd(t1.f5, t2.f5),
+    recent_form_10_diff: sd(t1.f10, t2.f10),
+    partnership_form_5_diff: dbl ? sd(t1.pf5, t2.pf5) : 0,
+    player_experience_diff: t1.exp - t2.exp,
+    career_win_rate_diff: sd(t1.cwr, t2.cwr),
+    partnership_matches_diff: dbl ? t1.pm - t2.pm : 0,
+    rest_days_mean_diff: (t1.lastMean === null || t2.lastMean === null) ? null : (t2.lastMean - t1.lastMean) / DAY,
+    rest_days_min_diff: (t1.lastMax === null || t2.lastMax === null) ? null : (t2.lastMax - t1.lastMax) / DAY,
+    h2h_win_diff: hh.a - hh.b,
+    glicko_certainty_weighted_rating_diff: certainty * (t1.gr - t2.gr),
+    glicko_deviation_diff: t1.gd - t2.gd,
+    glicko_volatility_diff: t1.gv - t2.gv,
+    _cold: t1.cold - t2.cold, _h2h: hh,
+  };
+}
+const GROUPS = [
+  ["Rating gap", ["individual_elo_diff", "partnership_elo_diff", "glicko_certainty_weighted_rating_diff"]],
+  ["Recent form", ["recent_form_5_diff", "recent_form_10_diff", "partnership_form_5_diff"]],
+  ["Career record", ["career_win_rate_diff"]],
+  ["Experience", ["player_experience_diff", "partnership_matches_diff"]],
+  ["Head-to-head", ["h2h_win_diff"]],
+  ["Rest days", ["rest_days_mean_diff", "rest_days_min_diff"]],
+  ["Rating certainty", ["glicko_deviation_diff", "glicko_volatility_diff", "_cold"]],
+];
+function predict(disc, ids1, ids2) {
+  const t1 = teamStats(disc, ids1), t2 = teamStats(disc, ids2);
+  const f = features(disc, t1, t2);
+  const W = D.model.weights;
+  const contrib = {};
+  let m = 0;
+  for (const [g, cols] of GROUPS) {
+    let c = 0;
+    for (const col of cols) {
+      if (col === "_cold") { c += D.model.cold_start_weight * f._cold; continue; }
+      const v = f[col];
+      if (v === null || v === undefined || Number.isNaN(v)) continue;
+      c += W[col] * v;
+    }
+    contrib[g] = c; m += c;
+  }
+  return { p: sig(m), margin: m, contrib, t1, t2, f };
+}
+const pairwiseCache = new Map();
+function pWin(disc, a, b) {
+  const k = disc + a.join("-") + "|" + b.join("-");
+  if (!pairwiseCache.has(k)) pairwiseCache.set(k, predict(disc, a, b).p);
+  return pairwiseCache.get(k);
+}
+
+// ------------------------------------------------------------------ catalogues
+const CAT = {};
+function catalogue(disc) {
+  if (CAT[disc]) return CAT[disc];
+  const P = D.players.players[disc];
+  let items;
+  if (!DOUBLES.has(disc)) {
+    items = Object.entries(P).filter(([, r]) => r.m >= 3).map(([id, r]) => ({
+      ids: [+id], label: r.n, sub: r.c, strength: r.gr, active: r.a && r.last >= "2026-01-01", r }));
+  } else {
+    items = D.pairs[disc].filter(p => p.m >= 3 && p.p.every(id => P[id])).map(p => {
+      const rs = p.p.map(id => P[id]);
+      return { ids: p.p, label: rs.map(r => r.n).join(" / "), sub: [...new Set(rs.map(r => r.c))].join("/"),
+        strength: mean(rs.map(r => r.gr)) + 0.25 * (p.elo - 1500), active: rs.every(r => r.a && r.last >= "2026-01-01"), pair: p };
+    });
+  }
+  items.sort((x, y) => (y.active - x.active) || (y.strength - x.strength));
+  CAT[disc] = items;
+  return items;
+}
+function topEntrants(disc, n) {
+  const used = new Set(), out = [];
+  for (const it of catalogue(disc)) {
+    if (!it.active) continue;
+    if (!DOUBLES.has(disc) && it.r.m < 15) continue;
+    if (DOUBLES.has(disc) && it.pair.m < 8) continue;
+    if (it.ids.some(id => used.has(id))) continue;
+    it.ids.forEach(id => used.add(id)); out.push(it);
+    if (out.length === n) break;
+  }
+  // order the field by the model itself: average win probability against the rest
+  const score = it => mean(out.filter(o => o !== it).map(o => pWin(disc, it.ids, o.ids)));
+  return out.map(it => [it, score(it)]).sort((a, b) => b[1] - a[1]).map(x => x[0]);
+}
+const nameOf = (disc, ids) => ids.map(id => rec(disc, id).n).join(" / ");
+const short = (disc, ids) => ids.map(id => { const n = rec(disc, id).n; const up = n.split(" ").filter(w => w === w.toUpperCase() && /[A-Z]/.test(w)); return up.length ? up.join(" ") : n; }).join(" / ");
+
+// ------------------------------------------------------------------ picker
+function makePicker(el, id, getItems, onPick) {
+  el.innerHTML = `<input type="text" id="${id}-input" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="${id}-list"><div class="list" id="${id}-list" role="listbox" hidden></div>`;
+  const input = $("input", el), list = $(".list", el);
+  let shown = [], idx = -1, current = null;
+  const render = () => {
+    const q = fold(input.value.trim());
+    const items = getItems();
+    shown = (q ? items.filter(it => fold(it.label + " " + it.sub).includes(q)) : items).slice(0, 40);
+    list.innerHTML = shown.map((it, i) => `<div class="opt" role="option" data-i="${i}" aria-selected="${i === idx}"><span>${esc(it.label)}</span><small>${esc(it.sub)} · ${Math.round(it.r ? it.r.gr : it.strength)}</small></div>`).join("") || `<div class="opt"><span>No match. Try a surname.</span></div>`;
+    list.hidden = false; input.setAttribute("aria-expanded", "true");
+  };
+  const choose = it => { current = it; input.value = it.label; list.hidden = true; input.setAttribute("aria-expanded", "false"); onPick(it); };
+  input.addEventListener("focus", () => { input.select(); idx = -1; render(); });
+  input.addEventListener("input", () => { idx = -1; render(); });
+  input.addEventListener("keydown", e => {
+    if (e.key === "ArrowDown") { idx = Math.min(idx + 1, shown.length - 1); render(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { idx = Math.max(idx - 1, 0); render(); e.preventDefault(); }
+    else if (e.key === "Enter" && shown[Math.max(idx, 0)]) { choose(shown[Math.max(idx, 0)]); e.preventDefault(); }
+    else if (e.key === "Escape") { list.hidden = true; if (current) input.value = current.label; }
+  });
+  list.addEventListener("mousedown", e => { const o = e.target.closest(".opt[data-i]"); if (o) { e.preventDefault(); choose(shown[+o.dataset.i]); } });
+  input.addEventListener("blur", () => setTimeout(() => { list.hidden = true; input.setAttribute("aria-expanded", "false"); if (current) input.value = current.label; }, 120));
+  return { set: it => { current = it; input.value = it ? it.label : ""; } };
+}
+function segmented(el, value, onChange) {
+  el.innerHTML = DISCS.map(d => `<button type="button" data-d="${d}" aria-pressed="${d === value}" title="${DNAME[d]}">${d}</button>`).join("");
+  el.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; el.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); onChange(b.dataset.d); });
+}
+
+// ------------------------------------------------------------------ visuals
+function burst(word, color) {
+  const pts = [], n = 12, cx = 64, cy = 64;
+  for (let i = 0; i < n * 2; i++) { const a = Math.PI * i / n - Math.PI / 2, rr = i % 2 ? 40 : 62; pts.push((cx + rr * Math.cos(a)).toFixed(1) + "," + (cy + rr * Math.sin(a)).toFixed(1)); }
+  return `<svg class="burst land" viewBox="0 0 128 128" role="img" aria-label="${esc(word)}"><polygon points="${pts.join(" ")}" fill="#000" transform="translate(4 4)"/><polygon points="${pts.join(" ")}" fill="${color}" stroke="#000" stroke-width="3"/><text x="64" y="${word.includes(" ") ? 60 : 69}" text-anchor="middle" style="font:900 italic 17px Archivo, sans-serif;fill:#000">${word.split(" ").map((w, i) => `<tspan x="64" dy="${i ? 18 : 0}">${esc(w)}</tspan>`).join("")}</text></svg>`;
+}
+function formStrip(h) { return `<div class="form" aria-label="Last results, oldest first">${[...(h || "")].map(c => `<i class="${c === "1" ? "w" : "l"}">${c === "1" ? "W" : "L"}</i>`).join("") || '<span style="color:var(--muted);font-size:12px">no history</span>'}</div>`; }
+function lineChart(series, opts = {}) {
+  const W = opts.w || 560, H = opts.h || 220, L = 44, R = 12, T = 12, B = 26;
+  const all = series.flatMap(s => s.pts);
+  if (!all.length) return "";
+  const xs = all.map(p => p[0]), ys = all.map(p => p[1]);
+  const x0 = opts.x0 ?? Math.min(...xs), x1 = opts.x1 ?? Math.max(...xs);
+  let y0 = opts.y0 ?? Math.min(...ys), y1 = opts.y1 ?? Math.max(...ys);
+  if (opts.y0 === undefined) { const pad = (y1 - y0) * 0.08 || 50; y0 -= pad; y1 += pad; }
+  const X = v => L + (W - L - R) * (x1 === x0 ? .5 : (v - x0) / (x1 - x0));
+  const Y = v => T + (H - T - B) * (1 - (v - y0) / (y1 - y0));
+  const ticks = opts.yticks || niceTicks(y0, y1, 5);
+  let g = ticks.map(t => `<line class="axis" x1="${L}" x2="${W - R}" y1="${Y(t)}" y2="${Y(t)}" stroke-dasharray="2 4"/><text x="${L - 6}" y="${Y(t) + 4}" text-anchor="end">${opts.yfmt ? opts.yfmt(t) : t}</text>`).join("");
+  (opts.xticks || []).forEach(([v, lab]) => { g += `<text x="${X(v)}" y="${H - 8}" text-anchor="middle">${lab}</text>`; });
+  if (opts.diag) g += `<line x1="${X(0)}" y1="${Y(0)}" x2="${X(1)}" y2="${Y(1)}" stroke="var(--muted)" stroke-dasharray="4 4"/>`;
+  for (const s of series) {
+    const d = s.pts.map((p, i) => (i ? "L" : "M") + X(p[0]).toFixed(1) + " " + Y(p[1]).toFixed(1)).join("");
+    if (s.area) g += `<path d="${d}L${X(s.pts[s.pts.length - 1][0])} ${Y(y0)}L${X(s.pts[0][0])} ${Y(y0)}Z" fill="${s.color}" opacity=".14"/>`;
+    g += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.width || 2.5}"/>`;
+    if (s.dots) s.pts.forEach(p => g += `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="${s.r ? s.r(p) : 4}" fill="${s.color}" stroke="#000" stroke-width="1.5"/>`);
+    const last = s.pts[s.pts.length - 1];
+    if (s.end) g += `<circle cx="${X(last[0])}" cy="${Y(last[1])}" r="5" fill="${s.color}" stroke="#000" stroke-width="2"/>`;
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(opts.label || "chart")}">${g}</svg>`;
+}
+function niceTicks(a, b, n) {
+  const step0 = (b - a) / n, mag = 10 ** Math.floor(Math.log10(step0)), step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= step0);
+  const out = []; for (let v = Math.ceil(a / step) * step; v <= b + 1e-9; v += step) out.push(+v.toFixed(6)); return out;
+}
+function hbars(rows, opts = {}) {
+  // rows: [{label, value, color, text}]
+  const max = opts.max ?? Math.max(...rows.map(r => r.value)), min = opts.min ?? 0;
+  return `<div class="grid" style="gap:7px">${rows.map(r => `<div style="display:grid;grid-template-columns:${opts.lw || 110}px minmax(0,1fr) 62px;gap:10px;align-items:center;font-size:13px"><span style="color:var(--ink-2);font-weight:700">${esc(r.label)}</span><div style="height:16px;background:var(--bg-2);border:1px solid var(--line)"><div style="height:100%;width:${Math.max(0, 100 * (r.value - min) / (max - min))}%;background:${r.color || "var(--yellow)"}"></div></div><span class="num" style="text-align:right;font-family:var(--mono);font-size:12px">${r.text}</span></div>`).join("")}</div>`;
+}
+
+// ------------------------------------------------------------------ PREDICT
+const S = { disc: "MS", a: null, b: null, g1: null };
+let pickA, pickB;
+function defaultFixture(disc) {
+  const top = topEntrants(disc, 2);
+  return [top[0], top[1]];
+}
+function initPredict() {
+  segmented($("#disc-predict"), S.disc, d => { S.disc = d; const [a, b] = defaultFixture(d); setFixture(a, b); });
+  pickA = makePicker($("#pick-a"), "pick-a", () => catalogue(S.disc), it => { S.a = it; S.g1 = null; renderPredict(); });
+  pickB = makePicker($("#pick-b"), "pick-b", () => catalogue(S.disc), it => { S.b = it; S.g1 = null; renderPredict(); });
+  $("#swap").onclick = () => setFixture(S.b, S.a);
+  $("#random-fixture").onclick = () => { const top = topEntrants(S.disc, 20); const i = Math.floor(Math.random() * 20); let j = Math.floor(Math.random() * 19); if (j >= i) j++; setFixture(top[i], top[j]); };
+  ["ctx-home-a", "ctx-home-b", "ctx-fat-a", "ctx-fat-b"].forEach(id => $("#" + id).addEventListener("change", renderPredict));
+  $("#g1go").onclick = () => { renderLive(true); };
+  ["g1a", "g1b"].forEach(id => $("#" + id).addEventListener("keydown", e => { if (e.key === "Enter") renderLive(true); }));
+  const c = D.context;
+  $("#ctx-note").innerHTML = `Measured effects: home side <b>+${D.insights.home_advantage.effect_pp.toFixed(1)} pts</b> of win probability above the model (95% CI ${D.insights.home_advantage.ci_pp[0].toFixed(1)} to ${D.insights.home_advantage.ci_pp[1].toFixed(1)}); coming off a three-game match <b>${D.insights.fatigue_three_games.effect_pp.toFixed(1)} pts</b> (${D.insights.fatigue_three_games.ci_pp[0].toFixed(1)} to ${D.insights.fatigue_three_games.ci_pp[1].toFixed(1)}). Adjustments use log-odds shifts of ${c.coef.home_diff.toFixed(3)} and ${c.coef.fatigue_diff.toFixed(3)}, fitted on 2025.`;
+  // famous default
+  const cat = catalogue("MS");
+  const find = id => cat.find(it => it.ids[0] === id);
+  setFixture(find(57945) || defaultFixture("MS")[0], find(64032) || defaultFixture("MS")[1]);
+}
+function setFixture(a, b) { S.a = a; S.b = b; S.g1 = null; pickA.set(a); pickB.set(b); $("#g1a").value = ""; $("#g1b").value = ""; renderPredict(); }
+function contextShift() {
+  const c = D.context.coef;
+  const home = (+$("#ctx-home-a").checked) - (+$("#ctx-home-b").checked);
+  const fat = (+$("#ctx-fat-a").checked) - (+$("#ctx-fat-b").checked);
+  return c.home_diff * home + c.fatigue_diff * fat;
+}
+function renderPredict() {
+  if (!S.a || !S.b) return;
+  const disc = S.disc;
+  if (S.a.ids.some(id => S.b.ids.includes(id))) { $("#result").innerHTML = `<p class="err">The same player cannot be on both sides. Pick a different opponent.</p>`; $("#factors").innerHTML = ""; $("#explain").innerHTML = ""; return; }
+  const P = predict(disc, S.a.ids, S.b.ids);
+  const shift = contextShift();
+  const pBase = P.p, p = sig(P.margin + shift);
+  const fav = p >= 0.5 ? "a" : "b", pf = Math.max(p, 1 - p);
+  const word = pf < 0.55 ? "TOO CLOSE" : pf < 0.7 ? "EDGE" : pf < 0.85 ? "FAVOURITE" : "STRONG FAV";
+  const col = pf < 0.55 ? "var(--grey)" : fav === "a" ? "var(--side-a)" : "var(--side-b)";
+  const favName = fav === "a" ? S.a.label : S.b.label;
+  const call = pf < 0.55 ? "Too close to call" : `${pct(pf)} ${fav === "a" ? "side A" : "side B"}`;
+  const hh = P.f._h2h;
+  const side = (t, it, cls) => {
+    const rs = t.rs;
+    return `<div class="${cls}"><div style="font-weight:800;overflow-wrap:anywhere">${esc(it.label)}</div><div style="color:var(--muted);font-size:12px;margin-bottom:6px">${esc(it.sub)}</div>
+      <div class="kv"><span>Glicko-2 rating</span><b>${Math.round(t.gr)} ± ${Math.round(t.gd)}</b></div>
+      <div class="kv"><span>Career W–L</span><b>${rs.map(r => r.w + "–" + (r.m - r.w)).join(" · ")}</b></div>
+      ${DOUBLES.has(disc) ? `<div class="kv"><span>Matches as a pair</span><b>${t.pm}${t.known ? "" : " (new pair)"}</b></div>` : ""}
+      <div class="kv"><span>Last match</span><b>${rs.map(r => r.last || "–").join(" · ")}</b></div>
+      ${formStrip(DOUBLES.has(disc) ? (t.ph || rs[0].h) : rs[0].h)}</div>`;
+  };
+  $("#result").innerHTML = `<div class="verdict"><div><div class="eyebrow">${DNAME[disc]} · model forecast</div><div class="call land">${esc(call)}</div><div class="who">${pf < 0.55 ? "Neither side is a clear favourite." : "Favourite: " + esc(favName)}</div></div>${burst(word, col)}</div>
+    <div class="pbar" role="img" aria-label="Side A ${pct(p)}, side B ${pct(1 - p)}"><div class="a" style="flex-basis:${100 * p}%">${pct(p)}</div><div class="b" style="flex-basis:${100 * (1 - p)}%">${pct(1 - p)}</div></div>
+    ${shift ? `<p class="note">Context adjustment applied: champion model alone says ${pct(pBase, 1)} for side A.</p>` : ""}
+    <div class="sidecard">${side(P.t1, S.a, "")}${side(P.t2, S.b, "b")}</div>
+    <p class="note">Head-to-head on the World Tour since 2021: <b>${hh.n ? `${hh.a}–${hh.b}` : "never met"}</b>${hh.n ? ` in ${hh.n} match${hh.n > 1 ? "es" : ""}` : ""}. Ratings as of 9 Aug 2026.</p>`;
+  // factor bars
+  const entries = GROUPS.map(([g]) => [g, P.contrib[g]]);
+  const maxAbs = Math.max(0.4, ...entries.map(e => Math.abs(e[1])));
+  $("#factors").innerHTML = entries.map(([g, c]) => {
+    const w = 50 * Math.abs(c) / maxAbs;
+    const left = c >= 0 ? 50 - w : 50;
+    return `<div class="factor"><span class="name">${g}</span><div class="track" role="img" aria-label="${g} ${c >= 0 ? "favours A" : "favours B"} by ${Math.abs(c).toFixed(2)} log-odds"><div class="fill" style="left:${left}%;width:${w}%;background:${c >= 0 ? "var(--side-a)" : "var(--side-b)"}"></div></div><span class="val">${c >= 0 ? "A " : "B "}${Math.abs(c).toFixed(2)}</span></div>`;
+  }).join("");
+  // plain-English: biggest three, with "without this factor" counterfactual
+  const ranked = entries.filter(e => Math.abs(e[1]) > 0.02).sort((x, y) => Math.abs(y[1]) - Math.abs(x[1])).slice(0, 3);
+  const sentences = ranked.map(([g, c]) => {
+    const without = sig(P.margin - c);
+    const who = c > 0 ? "side A" : "side B";
+    return `<li><b>${g}</b> favours ${who}. Without it, side A would be at ${pct(without)} instead of ${pct(pBase)}.${detail(g, P, disc)}</li>`;
+  });
+  $("#explain").innerHTML = sentences.join("") || "<li>No single factor stands out: the sides are closely matched on every measure.</li>";
+  renderLive(false);
+}
+function detail(g, P, disc) {
+  const t1 = P.t1, t2 = P.t2;
+  if (g === "Rating gap") return ` Glicko-2 ratings ${Math.round(t1.gr)} vs ${Math.round(t2.gr)}.`;
+  if (g === "Recent form" && t1.f5 !== null && t2.f5 !== null) return ` Last five: ${Math.round(t1.f5 * 5)}–${5 - Math.round(t1.f5 * 5)} vs ${Math.round(t2.f5 * 5)}–${5 - Math.round(t2.f5 * 5)}.`;
+  if (g === "Head-to-head") return ` Record ${P.f._h2h.a}–${P.f._h2h.b}.`;
+  if (g === "Career record" && t1.cwr !== null && t2.cwr !== null) return ` Career win rate ${pct(t1.cwr)} vs ${pct(t2.cwr)}.`;
+  if (g === "Experience") return ` World Tour matches since 2021: ${Math.round(t1.exp)} vs ${Math.round(t2.exp)}.`;
+  if (g === "Rating certainty") return ` The model is less sure about the side with the wider rating deviation.`;
+  return "";
+}
+function renderLive(fromButton) {
+  const out = $("#live-out");
+  const a = $("#g1a").value, b = $("#g1b").value;
+  if (a === "" || b === "") { out.innerHTML = fromButton ? `<p class="err">Enter both scores from game 1, for example 21 and 17.</p>` : ""; return; }
+  const x = +a, y = +b;
+  const valid = Number.isInteger(x) && Number.isInteger(y) && (
+    (Math.max(x, y) === 21 && Math.abs(x - y) >= 2) || (Math.max(x, y) > 21 && Math.max(x, y) <= 30 && (Math.abs(x - y) === 2 || Math.max(x, y) === 30) && Math.min(x, y) >= 20));
+  if (!valid) { out.innerHTML = `<p class="err">That is not a finished badminton game. A game ends at 21 with a two-point lead, or at 30.</p>`; return; }
+  const P = predict(S.disc, S.a.ids, S.b.ids);
+  const c = D.live.coef;
+  const g1 = x > y ? 1 : -1, g1m = Math.max(-21, Math.min(21, x - y)) / 21;
+  const pl = sig(c.margin * P.margin + c.g1 * g1 + c.g1_margin * g1m);
+  const t = D.live.test_2026;
+  out.innerHTML = `<div class="row" style="align-items:baseline;gap:14px"><div style="font:900 italic 40px/1 var(--display);color:var(--green)" class="land">${pct(pl)}</div><div>side A after game 1 <span style="color:var(--muted)">(was ${pct(P.p)} before the match)</span></div></div>
+    <div class="pbar"><div class="a" style="flex-basis:${100 * pl}%">${pct(pl)}</div><div class="b" style="flex-basis:${100 * (1 - pl)}%">${pct(1 - pl)}</div></div>
+    <p class="note">Tested on 2026: ROC-AUC ${t.auc_prematch.toFixed(3)} before the match rises to ${t.auc_after_game1.toFixed(3)} after game 1 (log loss ${t.logloss_prematch.toFixed(3)} → ${t.logloss_after_game1.toFixed(3)}).</p>`;
+}
+
+// ------------------------------------------------------------------ SIMULATE
+const SIM = { disc: "WS", field: [], order: [] };
+const SEED16 = [1, 16, 8, 9, 5, 12, 4, 13, 3, 14, 6, 11, 7, 10, 2, 15];
+const ROUNDS = ["R16", "QF", "SF", "Final", "Title"];
+function bracketProbs(disc, slots) {
+  const n = slots.length, R = Math.log2(n);
+  const pr = slots.map(() => [1]);
+  for (let r = 1; r <= R; r++) {
+    const size = 2 ** r, half = size / 2;
+    for (let i = 0; i < n; i++) {
+      const blockStart = Math.floor(i / size) * size;
+      const inFirst = (i - blockStart) < half;
+      const oppStart = inFirst ? blockStart + half : blockStart;
+      let s = 0;
+      for (let j = oppStart; j < oppStart + half; j++) s += pr[j][r - 1] * pWin(disc, slots[i].ids, slots[j].ids);
+      pr[i][r] = pr[i][r - 1] * s;
+    }
+  }
+  return pr;
+}
+function initSim() {
+  segmented($("#disc-sim"), SIM.disc, d => { SIM.disc = d; loadField(); });
+  $("#seeded").onclick = () => { SIM.order = SEED16.map(s => SIM.field[s - 1]); SIM.shuffled = false; renderSim(); };
+  $("#shuffle").onclick = () => { const a = SIM.field.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } SIM.order = a; SIM.shuffled = true; renderSim(); };
+  loadField();
+}
+function loadField() {
+  SIM.field = topEntrants(SIM.disc, 16);
+  SIM.order = SEED16.map(s => SIM.field[s - 1]);
+  SIM.shuffled = false;
+  SIM.seededTitle = new Map(bracketProbs(SIM.disc, SIM.order).map((p, i) => [SIM.order[i], p[4]]));
+  renderSim(); renderLuck();
+}
+function renderSim() {
+  const disc = SIM.disc, pr = bracketProbs(disc, SIM.order);
+  const rows = SIM.order.map((it, i) => ({ it, p: pr[i], seed: SIM.field.indexOf(it) + 1 })).sort((a, b) => b.p[4] - a.p[4]);
+  const max = rows[0].p[4];
+  $("#draw-note").textContent = SIM.shuffled ? "Random draw. Compare each title chance with the seeded draw in the last column." : "Seeded 1–16 by the model's own strength order, with seeds 1 and 2 in opposite halves.";
+  $("#odds").innerHTML = `<thead><tr><th>Seed</th><th>${DOUBLES.has(disc) ? "Pair" : "Player"}</th><th class="r">QF</th><th class="r">SF</th><th class="r">Final</th><th class="r">Title</th><th></th>${SIM.shuffled ? '<th class="r">vs seeded</th>' : ""}</tr></thead><tbody>${rows.map(r => {
+    const d = r.p[4] - SIM.seededTitle.get(r.it);
+    return `<tr${r.seed <= 2 ? ' class="hl"' : ""}><td class="num">${r.seed}</td><td>${esc(short(disc, r.it.ids))} <span style="color:var(--muted);font-size:12px">${esc(r.it.sub)}</span></td><td class="r">${pct(r.p[1])}</td><td class="r">${pct(r.p[2])}</td><td class="r">${pct(r.p[3])}</td><td class="r"><b>${pct(r.p[4], 1)}</b></td><td><div class="oddsbar"><div style="width:${100 * r.p[4] / max}%"></div></div></td>${SIM.shuffled ? `<td class="r" style="color:${d > 0.005 ? "var(--green)" : d < -0.005 ? "var(--pink)" : "var(--muted)"}">${sgn(100 * d)}</td>` : ""}</tr>`;
+  }).join("")}</tbody>`;
+  // bracket columns
+  const cols = [0, 1, 2, 3, 4].map(r => {
+    const size = 2 ** r;
+    const blocks = [];
+    for (let s = 0; s < 16; s += size) {
+      const members = SIM.order.slice(s, s + size).map((it, k) => ({ it, p: pr[s + k][r] })).sort((a, b) => b.p - a.p);
+      const lead = members[0];
+      blocks.push(`<div class="slot" style="border-left-color:${r === 4 ? "var(--yellow)" : "var(--line)"}"><b title="${esc(lead.it.label)}">${esc(short(disc, lead.it.ids))}</b><span>${r === 0 ? "" : pct(lead.p)}</span></div>`);
+    }
+    return `<div class="round"><div class="eyebrow">${r === 0 ? "Draw" : ROUNDS[r] === "Title" ? "Champion" : ROUNDS[r]}</div>${blocks.join("")}</div>`;
+  });
+  $("#bracket").style.gridTemplateColumns = "repeat(5, minmax(150px, 1fr))";
+  $("#bracket").innerHTML = cols.join("");
+}
+function renderLuck() {
+  const disc = SIM.disc, top8 = SIM.field.slice(0, 8);
+  const samples = new Map(top8.map(it => [it, []]));
+  for (let k = 0; k < 300; k++) {
+    const a = SIM.field.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    const pr = bracketProbs(disc, a);
+    a.forEach((it, i) => { if (samples.has(it)) samples.get(it).push(pr[i][4]); });
+  }
+  const rows = top8.map(it => { const s = samples.get(it).sort((x, y) => x - y); return { it, lo: s[Math.floor(s.length * .05)], hi: s[Math.floor(s.length * .95)], med: s[Math.floor(s.length / 2)], seeded: SIM.seededTitle.get(it) }; });
+  const max = Math.max(...rows.map(r => r.hi)) * 1.05;
+  $("#luck").innerHTML = `<div class="grid" style="gap:8px">${rows.map(r => `<div style="display:grid;grid-template-columns:120px minmax(0,1fr) 92px;gap:10px;align-items:center;font-size:12.5px"><span style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.it.label)}">${esc(short(disc, r.it.ids))}</span><div style="position:relative;height:16px;background:var(--bg-2);border:1px solid var(--line)"><div style="position:absolute;top:3px;bottom:3px;left:${100 * r.lo / max}%;width:${100 * (r.hi - r.lo) / max}%;background:var(--purple)"></div><div title="seeded draw" style="position:absolute;top:-3px;bottom:-3px;width:3px;left:${100 * r.seeded / max}%;background:var(--yellow)"></div></div><span class="num" style="font-family:var(--mono);text-align:right">${pct(r.lo)}–${pct(r.hi)}</span></div>`).join("")}</div><p class="note">Purple: middle 90% of title odds across random draws. Yellow tick: the seeded draw. Seeding protects the favourites: their seeded odds sit near the top of the range.</p>`;
+}
+
+// ------------------------------------------------------------------ SCOUT
+const SC = { disc: "WS", it: null };
+let pickScout;
+function initScout() {
+  segmented($("#disc-scout"), SC.disc, d => { SC.disc = d; const t = topEntrants(d, 1)[0]; pickScout.set(t); SC.it = t; renderScout(); renderRankings(); });
+  pickScout = makePicker($("#pick-scout"), "pick-scout", () => catalogue(SC.disc), it => { SC.it = it; renderScout(); });
+  const t = catalogue("WS").find(it => it.ids[0] === 87442) || topEntrants("WS", 1)[0];
+  pickScout.set(t); SC.it = t; renderScout(); renderRankings();
+}
+function renderScout() {
+  const disc = SC.disc, it = SC.it; if (!it) return;
+  const t = teamStats(disc, it.ids);
+  const wae = D.wae[disc + "|" + it.ids.join("-")];
+  const traj = it.ids.map(id => ({ id, pts: (D.trajectories[disc + "|" + id] || []) }));
+  const toX = ym => { const [y, m] = ym.split("-").map(Number); return y + (m - 1) / 12; };
+  const colors = ["var(--yellow)", "var(--blue)"];
+  const series = traj.filter(s => s.pts.length).map((s, k) => ({ pts: s.pts.map(([ym, v]) => [toX(ym), v]), color: colors[k], area: k === 0 && traj.length === 1, end: true }));
+  const rank = rankList(disc).findIndex(r => it.ids.includes(+r[0])) + 1;
+  const waeTxt = wae ? `${wae[1]} wins from ${wae[0]} matches against ${wae[2].toFixed(1)} expected: <b style="color:${wae[1] - wae[2] >= 0 ? "var(--green)" : "var(--pink)"}">${sgn(wae[1] - wae[2])}</b>` : "No 2026 matches in the audit set.";
+  $("#scout-card").innerHTML = `<div class="eyebrow">${DNAME[disc]}${rank ? ` · power rank #${rank}` : ""}</div><h2 style="font-size:30px;margin-top:6px">${esc(it.label)}</h2><p class="sub">${esc(it.sub)}</p>
+    <div class="grid g3" style="margin-top:14px;gap:10px">
+      <div><div class="eyebrow">Rating</div><div style="font:900 italic 30px/1.1 var(--display)" class="num">${Math.round(t.gr)}</div><div style="color:var(--muted);font-size:12px">± ${Math.round(t.gd)} deviation</div></div>
+      <div><div class="eyebrow">Career W–L</div><div style="font:900 italic 30px/1.1 var(--display)" class="num">${t.rs.map(r => r.w + "–" + (r.m - r.w)).join(" · ")}</div><div style="color:var(--muted);font-size:12px">${t.cwr !== null ? pct(t.cwr) + " win rate" : ""}</div></div>
+      <div><div class="eyebrow">Last 10</div>${formStrip(DOUBLES.has(disc) ? (t.ph || t.rs[0].h) : t.rs[0].h)}</div>
+    </div>
+    <div class="rule"></div>
+    <h3>2026 against the model</h3><p style="margin:6px 0 0">${waeTxt}</p>
+    <div class="rule"></div>
+    <h3>Glicko-2 rating, by month</h3>
+    ${series.length ? lineChart(series, { label: "rating history", xticks: [2021, 2022, 2023, 2024, 2025, 2026].map(y => [y, String(y)]) }) : '<p class="sub">Not enough matches (20+) for a rating history.</p>'}
+    ${DOUBLES.has(disc) && series.length > 1 ? `<p class="note">Yellow: ${esc(rec(disc, it.ids[0]).n)} · Blue: ${esc(rec(disc, it.ids[1]).n)}. Ratings are per player within the discipline.</p>` : ""}
+    <div class="row" style="margin-top:12px"><button class="btn ghost" type="button" id="scout-predict">Predict a match for ${DOUBLES.has(disc) ? "this pair" : "this player"}</button></div>`;
+  $("#scout-predict").onclick = () => { S.disc = disc; $("#disc-predict").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.d === disc)); const opp = topEntrants(disc, 3).find(o => !o.ids.some(id => it.ids.includes(id))); setFixture(it, opp); location.hash = "predict"; };
+}
+function rankList(disc) {
+  const P = D.players.players[disc];
+  return Object.entries(P).filter(([, r]) => r.a && r.m >= 15 && r.last >= "2026-05-01").sort((a, b) => b[1].gr - a[1].gr);
+}
+function renderRankings() {
+  const disc = SC.disc, list = rankList(disc).slice(0, 20);
+  $("#rankings").innerHTML = `<thead><tr><th class="r">#</th><th>Player</th><th class="r">Rating</th><th class="r">±</th><th class="r">Last 5</th><th class="r">2026 vs model</th></tr></thead><tbody>${list.map(([id, r], i) => {
+    const w = D.wae[disc + "|" + id];
+    const f = r.h.slice(-5);
+    return `<tr><td class="r">${i + 1}</td><td><a href="#scout" data-scout="${id}" style="color:var(--ink);text-decoration:none;font-weight:700">${esc(r.n)}</a> <span style="color:var(--muted);font-size:12px">${esc(r.c)}</span></td><td class="r">${Math.round(r.gr)}</td><td class="r" style="color:var(--muted)">${Math.round(r.gd)}</td><td class="r">${[...f].filter(c => c === "1").length}–${[...f].filter(c => c === "0").length}</td><td class="r">${w ? `<span style="color:${w[1] - w[2] >= 0.05 ? "var(--green)" : w[1] - w[2] <= -0.05 ? "var(--pink)" : "var(--muted)"}">${sgn(w[1] - w[2])}</span>` : "–"}</td></tr>`;
+  }).join("")}</tbody>`;
+  $("#rankings").onclick = e => {
+    const a = e.target.closest("[data-scout]"); if (!a) return; e.preventDefault();
+    const id = +a.dataset.scout;
+    if (DOUBLES.has(disc)) { const it = catalogue(disc).find(x => x.ids.includes(id)); if (it) { SC.it = it; pickScout.set(it); } }
+    else { const it = catalogue(disc).find(x => x.ids[0] === id); if (it) { SC.it = it; pickScout.set(it); } }
+    renderScout(); window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+}
+
+// ------------------------------------------------------------------ INSIGHTS
+function initInsights() {
+  const I = D.insights;
+  const gap = I.rating_gap;
+  const gapChart = lineChart([{ pts: gap.map((g, i) => [25 + 50 * i, g.stronger_wins]), color: "var(--yellow)", dots: true, end: false }], { y0: 0.45, y1: 1, yticks: [0.5, 0.6, 0.7, 0.8, 0.9, 1], yfmt: v => Math.round(v * 100) + "%", xticks: [[25, "0–50"], [225, "200–250"], [475, "450+"]], label: "rating gap vs win rate", w: 330, h: 190 });
+  const disc = I.by_discipline;
+  const rounds = I.by_round.filter(r => !r.k.startsWith("Qual"));
+  const H = I.home_advantage, F = I.fatigue_three_games, G = I.game1;
+  const forest = (rows) => {
+    const W = 340, Hh = 30 * rows.length + 30, L = 118, R = 14, min = -8, max = 8;
+    const X = v => L + (W - L - R) * (v - min) / (max - min);
+    let g = `<line x1="${X(0)}" x2="${X(0)}" y1="6" y2="${Hh - 22}" stroke="var(--muted)" stroke-dasharray="3 3"/>`;
+    [-8, 0, 8].forEach(t => g += `<text x="${X(t)}" y="${Hh - 6}" text-anchor="middle">${t > 0 ? "+" : ""}${t} pts</text>`);
+    rows.forEach((r, i) => { const y = 22 + 30 * i; g += `<text x="0" y="${y + 4}">${esc(r[0])}</text><line x1="${X(r[2])}" x2="${X(r[3])}" y1="${y}" y2="${y}" stroke="${r[4]}" stroke-width="4"/><circle cx="${X(r[1])}" cy="${y}" r="7" fill="${r[4]}" stroke="#000" stroke-width="2"/>`; });
+    return `<svg viewBox="0 0 ${W} ${Hh}" width="100%" role="img" aria-label="effect sizes with 95% intervals">${g}</svg>`;
+  };
+  const cards = [
+    { c: "y", eyebrow: "Ratings work", big: `${pct(gap[gap.length - 1].stronger_wins)}`, title: "A 450+ point rating gap almost settles it",
+      body: `In close matches (gap under 50) the stronger side wins only ${pct(gap[0].stronger_wins)}. Every extra 50 points adds about 5–7 points of win probability until the curve flattens above 90%.`, chart: gapChart,
+      act: "Use the gap to plan: under 100 points is a genuine contest, so prepare tactically; above 300, rotation risk is low." },
+    { c: "p", eyebrow: "Discipline matters", big: `${disc.find(d => d.k === "MS").auc.toFixed(2)} vs ${disc.find(d => d.k === "WD").auc.toFixed(2)}`, cls: "b", title: "Men's singles is the hardest event to call",
+      body: `ROC-AUC is lowest in men's singles and highest in women's doubles. One in three men's singles favourites loses (${pct(disc.find(d => d.k === "MS").upset_rate)}), against ${pct(disc.find(d => d.k === "WD").upset_rate)} in women's doubles.`,
+      chart: hbars(disc.map(d => ({ label: DNAME[d.k], value: d.upset_rate, text: pct(d.upset_rate) + " upsets", color: "var(--purple)" })), { max: 0.4, lw: 120 }),
+      act: "Treat a men's singles forecast as a lean, not a lock. Women's doubles favourites are the safest call on tour." },
+    { c: "k", eyebrow: "Finals are different", big: pct(rounds.find(r => r.k === "Final").upset_rate), cls: "k", title: "Upsets peak in finals",
+      body: `Favourites win ${pct(rounds.find(r => r.k === "R32").fav_win)} of round-of-32 matches but only ${pct(rounds.find(r => r.k === "Final").fav_win)} of finals, because by then the two sides are closer than their ratings say.`,
+      chart: hbars(rounds.map(r => ({ label: r.k, value: r.upset_rate, text: pct(r.upset_rate), color: "var(--pink)" })), { max: 0.4, lw: 60 }),
+      act: "Late-round underdogs deserve more belief than the rating gap suggests: game-plan to win, not to limit the margin." },
+    { c: "g", eyebrow: "Home court", big: `+${H.effect_pp.toFixed(1)} pts`, cls: "g", title: "Home players beat the model",
+      body: `When one side is from the host nation, it wins ${pct(H.actual, 1)} against an expected ${pct(H.expected, 1)} (${H.n.toLocaleString()} matches; 95% CI +${H.ci_pp[0].toFixed(1)} to +${H.ci_pp[1].toFixed(1)}). The model cannot see this, because tournament context cancels out under its symmetry.`,
+      chart: forest([["Home side", H.effect_pp, H.ci_pp[0], H.ci_pp[1], "var(--green)"], ["After a 3-game round", F.effect_pp, F.ci_pp[0], F.ci_pp[1], "var(--pink)"]]),
+      act: "When scouting a home player, add about 3 points of win probability to the model's number." },
+    { c: "k", eyebrow: "Fatigue", big: `${F.effect_pp.toFixed(1)} pts`, cls: "k", title: "A three-game match costs you next round",
+      body: `A side coming off a three-game match, facing an opponent who won in two, wins ${pct(F.actual, 1)} against ${pct(F.expected, 1)} expected (${F.n.toLocaleString()} matches; 95% CI ${F.ci_pp[0].toFixed(1)} to ${F.ci_pp[1].toFixed(1)}).`,
+      act: "After a three-gamer, prioritise recovery between rounds. When the opponent went three, press early." },
+    { c: "y", eyebrow: "Game 1", big: pct(G.game1_winner_wins_match), title: "Game 1 decides most matches",
+      body: `${pct(G.game1_winner_wins_match)} of game-1 winners take the match. An underdog (under 35% before the match) who wins game 1 goes on to win ${pct(G.underdog_after_winning_g1)}. A favourite (over 65%) who loses it recovers ${pct(G.favourite_after_losing_g1)} of the time.`,
+      act: "Underdogs should commit to a fast start. The Live panel on the Predict view turns any game-1 score into an updated probability." },
+  ];
+  $("#findings").innerHTML = cards.map(c => `<div class="panel ${c.c} finding"><div class="eyebrow">${c.eyebrow}</div><div class="big ${c.cls || ""}">${c.big}</div><h2 style="font-size:19px">${c.title}</h2><p>${c.body}</p>${c.chart ? `<div style="margin-top:12px">${c.chart}</div>` : ""}<div class="act"><b>For the coach</b>${c.act}</div></div>`).join("");
+  $("#upsets").innerHTML = `<thead><tr><th>Date</th><th></th><th>Winner beat</th><th class="r">Win chance</th></tr></thead><tbody>${I.upsets_2026.slice(0, 10).map(u => `<tr><td class="num" style="white-space:nowrap">${u.date}</td><td><span class="chip">${u.d}</span></td><td><b>${esc(u.winner)}</b><br><span style="color:var(--muted);font-size:12px">beat ${esc(u.loser)} · ${esc(u.round)} · ${esc(u.tour.replace(/ 2026.*$/, ""))} · ${esc(u.score)}</span></td><td class="r" style="color:var(--pink);font-weight:800">${pct(u.p_winner, 1)}</td></tr>`).join("")}</tbody>`;
+  let od = "MS";
+  const renderOut = () => {
+    const list = I.outperformers_2026[od] || [];
+    $("#outperf").innerHTML = `<thead><tr><th>${DOUBLES.has(od) ? "Pair" : "Player"}</th><th class="r">Played</th><th class="r">Won</th><th class="r">Expected</th><th class="r">Above</th></tr></thead><tbody>${list.map(o => `<tr><td>${esc(o.name)}</td><td class="r">${o.n}</td><td class="r">${o.wins}</td><td class="r">${o.exp.toFixed(1)}</td><td class="r" style="color:var(--green);font-weight:800">+${o.wae.toFixed(1)}</td></tr>`).join("")}</tbody>`;
+  };
+  segmented($("#disc-out"), od, d => { od = d; renderOut(); });
+  renderOut();
+}
+
+// ------------------------------------------------------------------ EVIDENCE
+function initEvidence() {
+  const M = D.model, a5 = M.audit["2025"], a6 = M.audit["2026"];
+  const row = (k, f) => `<tr><td>${k}</td><td class="r">${f(a5)}</td><td class="r">${f(a6)}</td></tr>`;
+  $("#audit").innerHTML = `<thead><tr><th>Metric</th><th class="r">2025</th><th class="r">2026 (to 9 Aug)</th></tr></thead><tbody>
+    ${row("Matches", a => a.n.toLocaleString())}
+    ${row("ROC-AUC", a => `<b>${a.auc.toFixed(3)}</b>`)}
+    ${row("95% interval", a => `${a.auc_ci[0].toFixed(3)}–${a.auc_ci[1].toFixed(3)}`)}
+    ${row("Accuracy", a => pct(a.accuracy, 1))}
+    ${row("Brier score", a => a.brier.toFixed(3))}
+    ${row("Log loss", a => a.logloss.toFixed(3))}</tbody>`;
+  const calSeries = [["2025", a5, "var(--yellow)"], ["2026", a6, "var(--blue)"]].map(([, a, c]) => ({ pts: a.calibration.map(b => [b.p, b.obs]), color: c, dots: true, r: p => 4, width: 2 }));
+  $("#calib").innerHTML = lineChart(calSeries, { y0: 0, y1: 1, yticks: [0, .25, .5, .75, 1], yfmt: v => Math.round(v * 100) + "%", xticks: [[0, "0%"], [.5, "50%"], [1, "100%"]], diag: true, x0: 0, x1: 1, label: "calibration" }).replace('viewBox="0 0 560 220"', 'viewBox="0 0 560 220"') + `<p class="note">Yellow: 2025. Blue: 2026. Horizontal axis: predicted chance. Vertical: how often that side won.</p>`;
+  const pooled = DISCS.map(d => { const x = a5.by_discipline[d], y = a6.by_discipline[d]; return { d, auc: (x.auc * x.n + y.auc * y.n) / (x.n + y.n) }; });
+  $("#disc-auc").innerHTML = hbars(pooled.map(p => ({ label: DNAME[p.d], value: p.auc, text: p.auc.toFixed(3), color: p.auc >= .8 ? "var(--green)" : "var(--yellow)" })), { min: 0.5, max: 0.95, lw: 120 }) + `<p class="note">Bar scale starts at 0.5, a coin flip. Green bars clear 0.80. Weighted average of the two seasons.</p>`;
+  // live parity
+  let maxErr = 0;
+  for (const t of D.parity) { const p = predict(t.d, t.t1, t.t2).p; maxErr = Math.max(maxErr, Math.abs(p - t.p)); }
+  const ok = maxErr < 1e-9;
+  $("#parity").innerHTML = `<p class="sub">Just now, this page re-scored ${D.parity.length} random fixtures across all five disciplines that the original Python model service also scored.</p>
+    <div class="verdict" style="margin-top:8px"><div><div class="call land" style="font-size:34px;color:${ok ? "var(--green)" : "var(--pink)"}">${ok ? "Exact match" : "Mismatch"}</div><div class="who">Largest difference: ${maxErr.toExponential(1)}</div></div>${burst(ok ? "MATCH" : "CHECK", ok ? "var(--green)" : "var(--pink)")}</div>
+    <p class="note">The portable model was also checked offline against the served model on all ${M.verification.rows_checked.toLocaleString()} audit matches: largest probability difference ${M.verification.max_abs_probability_error_vs_served_model.toExponential(1)}.</p>`;
+}
+
+// ------------------------------------------------------------------ boot + routing
+function route() {
+  const v = (location.hash || "#predict").slice(1);
+  const views = ["predict", "simulate", "scout", "insights", "evidence"];
+  const cur = views.includes(v) ? v : "predict";
+  views.forEach(x => { $("#view-" + x).hidden = x !== cur; });
+  document.querySelectorAll("nav.tabs a").forEach(a => a.setAttribute("aria-current", a.dataset.view === cur ? "page" : "false"));
+}
+async function boot() {
+  const files = { model: "model", players: "players", pairs: "pairs", h2h: "h2h", trajectories: "trajectories", insights: "insights", live: "live", context: "context", parity: "parity", wae: "wae2026" };
+  try {
+    await Promise.all(Object.entries(files).map(async ([k, f]) => { const r = await fetch("data/" + f + ".json"); if (!r.ok) throw new Error(f + ".json returned " + r.status); D[k] = await r.json(); }));
+  } catch (e) {
+    $("#loading").innerHTML = `<span class="err">Could not load the match data (${esc(e.message)}). If you opened index.html straight from disk, serve the folder instead: python -m http.server</span>`;
+    return;
+  }
+  for (const d of ["MD", "WD", "XD"]) { PAIR[d] = {}; for (const p of D.pairs[d]) PAIR[d][p.p.join("-")] = p; }
+  $("#stamp").innerHTML = `Ratings as of <b>9 Aug 2026</b><br><b>29,792</b> World Tour matches<br>Audited on <b>10,852</b> unseen`;
+  $("#loading").remove();
+  initPredict(); initSim(); initScout(); initInsights(); initEvidence();
+  window.addEventListener("hashchange", route); route();
+}
+boot();
+</script>
+</body>
+</html>
