@@ -11,6 +11,7 @@ Audited badminton win probabilities a coach can explain: any BWF fixture, why th
 
 **Links**
 * Live demo: https://shermaineyap.github.io/squadro-match-lab/
+* Demo video: https://youtu.be/sDo82qeMfs4
 * Source code: https://github.com/ShermaineYap/squadro-match-lab
 
 **Built with:** python, pandas, scikit-learn, numpy, glicko-2, logistic-regression, javascript, html, css, svg, github-pages

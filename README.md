@@ -4,6 +4,8 @@
 
 **Live demo:** https://shermaineyap.github.io/squadro-match-lab/
 
+**Demo video (2.5 min):** https://youtu.be/sDo82qeMfs4
+
 ![Match forecast](docs/screenshots/predict.png)
 
 Built for the **AQX Sports Analytics Data Bowl 4.0** by Shermaine Yap Shi Min (Asia Pacific University of Technology and Innovation, Malaysia).
